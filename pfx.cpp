@@ -161,7 +161,7 @@ class PfxDlg : public ZDlg, DiskList
 		PVOID pvSafeBag;
 		ULONG cbSafeBag;
 
-		HRESULT hr = OnOk( hwndDlg, psz[0], psz[1], SerialMD5, &pvSafeBag, &cbSafeBag);
+		HRESULT hr = OnOk( hwndDlg, psz[0], psz[1] ? psz[1] : L"", SerialMD5, &pvSafeBag, &cbSafeBag);
 
 		if (0 <= hr)
 		{
