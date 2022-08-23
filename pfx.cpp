@@ -79,9 +79,9 @@ class PfxDlg : public ZDlg, DiskList
 					(BCRYPT_RSAKEY_BLOB*)rsa2.pbData, rsa2.cbData, SerialMD5, "0", 1)
 					: HRESULT_FROM_WIN32(ERROR_CANCELLED);
 
-				CertFreeCertificateContext(pCertContext);
 			}
 
+			CertFreeCertificateContext(pCertContext);
 			LocalFree(rsa2.pbData);
 		}
 
