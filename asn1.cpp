@@ -100,7 +100,7 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 			char bTag[4];
 			struct {
 				BYTE tag : 5;
-				BYTE type : 1;
+				BYTE composite : 1;
 				BYTE cls : 2;
 			};
 		};
@@ -233,7 +233,7 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 			break;
 		}
 
-		if (type)
+		if (composite)
 		{
 			if (Len)
 			{
@@ -369,16 +369,16 @@ ULONG SizeTLV(TLV* tlv)
 	{
 		ULONG cbTag = 1;
 
-		if (tlv->u.tag == 0x1f)
+		if (tlv->tag == 0x1f)
 		{
 			cbTag = 2;
-			if (tlv->u.bTag[1] < 0)
+			if (tlv->bTag[1] < 0)
 			{
 				cbTag = 3;
-				if (tlv->u.bTag[2] < 0)
+				if (tlv->bTag[2] < 0)
 				{
 					cbTag = 4;
-					if (tlv->u.bTag[3] < 0)
+					if (tlv->bTag[3] < 0)
 					{
 						return 0;
 					}
@@ -386,7 +386,7 @@ ULONG SizeTLV(TLV* tlv)
 			}
 		}
 
-		if (tlv->u.type)
+		if (tlv->composite)
 		{
 			if (!tlv->child || tlv->Len || !(Len = SizeTLV(tlv->child)))
 			{
@@ -432,12 +432,12 @@ PBYTE PackTLV(TLV* tlv, PBYTE pb)
 			char bTag[4];
 			struct {
 				BYTE tag : 5;
-				BYTE type : 1;
+				BYTE composite : 1;
 				BYTE cls : 2;
 			};
 		};
 
-		uTag = tlv->u.uTag;
+		uTag = tlv->uTag;
 
 		*pb++ = bTag[0];
 
@@ -494,7 +494,7 @@ PBYTE PackTLV(TLV* tlv, PBYTE pb)
 			*pb++ = b[0];
 		}
 
-		if (tlv->u.type)
+		if (tlv->composite)
 		{
 			pb = PackTLV(tlv->child, pb);
 		}

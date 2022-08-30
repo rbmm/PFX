@@ -77,10 +77,10 @@ struct TLV
 		char bTag[4];
 		struct {
 			BYTE tag : 5;
-			BYTE type : 1;//composite 
+			BYTE composite : 1;
 			BYTE cls : 2;
 		};
-	} u;
+	};
 };
 
 class alloc_TLV
