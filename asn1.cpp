@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "..\NtVer\nt_ver.h"
 
 _NT_BEGIN
 
@@ -90,42 +91,39 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 {
 	bool bDecrypt = false;
 
-	while (cbLength--)
+	if (cbLength)
 	{
-		LPCBYTE pb = pbBuffer;
-		ULONG cb = cbLength+1;
-
 		union {
-			ULONG uTag;
-			char bTag[4];
-			struct {
-				BYTE tag : 5;
-				BYTE composite : 1;
-				BYTE cls : 2;
-			};
+			ULONG Len;
+			UCHAR b[4];
+			SCHAR c;
 		};
 
-		uTag = *pbBuffer++;
-
-		if (tag == 0x1F)
+		do 
 		{
-			char c;
+			LPCBYTE pb = pbBuffer;
+			ULONG cb = cbLength;
 
-			if (!cbLength--)
-			{
-				return 0;
-			}
+			union {
+				ULONG uTag;
+				UCHAR bTag[4];
+				struct {
+					UCHAR tag : 5;
+					UCHAR composite : 1;
+					UCHAR cls : 2;
+				};
+			};
 
-			bTag[1] = c = *pbBuffer++;
+			uTag = *pbBuffer++, cbLength--;
 
-			if (0 > c)
+			if (tag == 0x1F)
 			{
 				if (!cbLength--)
 				{
 					return 0;
 				}
 
-				bTag[2] = c = *pbBuffer++;
+				bTag[1] = c = *pbBuffer++;
 
 				if (0 > c)
 				{
@@ -134,114 +132,115 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 						return 0;
 					}
 
-					bTag[3] = c = *pbBuffer++;
+					bTag[2] = c = *pbBuffer++;
 
 					if (0 > c)
 					{
-						return 0;
+						if (!cbLength--)
+						{
+							return 0;
+						}
+
+						bTag[3] = c = *pbBuffer++;
+
+						if (0 > c)
+						{
+							return 0;
+						}
 					}
 				}
 			}
-		}
 
-		if (!uTag)
-		{
-			break;
-		}
+			if (!uTag)
+			{
+				Len = 0;
+				continue;
+			}
 
-		if (!cbLength--)
-		{
-			return 0;
-		}
-
-		union {
-			char len;
-			ULONG Len;
-			char b[4];
-		};
-
-		Len = *pbBuffer++;
-
-		if (0 > len)
-		{
-			if ((Len &= ~0x80) > cbLength)
+			if (!cbLength--)
 			{
 				return 0;
 			}
 
-			cbLength -= Len;
+			Len = *pbBuffer++;
 
-			switch (len)
+			if (0 > c)
 			{
-			case 4:
-				b[3] = *pbBuffer++;
-				b[2] = *pbBuffer++;
-				b[1] = *pbBuffer++;
-				b[0] = *pbBuffer++;
-				break;
-			case 2:
-				b[1] = *pbBuffer++;
-				b[0] = *pbBuffer++;
-				break;
-			case 1:
-				b[0] = *pbBuffer++;
-				break;
-			case 0:
-				break;
-			default: return 0;
+				if ((Len &= ~0x80) > cbLength)
+				{
+					return 0;
+				}
+
+				cbLength -= Len;
+
+				switch (Len)
+				{
+				case 4:
+					b[3] = *pbBuffer++;
+					b[2] = *pbBuffer++;
+					b[1] = *pbBuffer++;
+					b[0] = *pbBuffer++;
+					break;
+				case 2:
+					b[1] = *pbBuffer++;
+					b[0] = *pbBuffer++;
+					break;
+				case 1:
+					b[0] = *pbBuffer++;
+					break;
+				case 0:
+					break;
+				default: return 0;
+				}
 			}
-		}
 
-		if (Len > cbLength)
-		{
-			return 0;
-		}
-
-		if (bDecrypt)
-		{
-			bDecrypt = FALSE;
-
-			if (!ImportKey(const_cast<PUCHAR>(pbBuffer), Len))
+			if (Len > cbLength)
 			{
 				return 0;
 			}
-		}
 
-		ULONG cbStructInfo;
-		union {
-			PVOID pvStructInfo;
-			PSTR* ppszObjId;
-		};
-
-		switch (uTag)
-		{
-		case ASN_TAG(ctUniversal, pcPrimitive, utObjectIdentifer):
-			if (CryptDecodeObjectEx(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, X509_OBJECT_IDENTIFIER, 
-				pb, cb, CRYPT_DECODE_ALLOC_FLAG|CRYPT_DECODE_NOCOPY_FLAG, 0, &ppszObjId, &cbStructInfo))
+			if (bDecrypt)
 			{
-				bDecrypt = !strcmp(*ppszObjId, "1.2.840.113549.1.12.10.1.2");
+				bDecrypt = FALSE;
 
-				LocalFree(ppszObjId);
+				if (!ImportKey(const_cast<PUCHAR>(pbBuffer), Len))
+				{
+					return 0;
+				}
 			}
-			break;
 
-		case ASN_TAG(ctUniversal, pcPrimitive, utOctetString):
-			if (Len > 32)
+			ULONG cbStructInfo;
+			union {
+				PVOID pvStructInfo;
+				PSTR* ppszObjId;
+			};
+
+			switch (uTag)
 			{
-				GetPriv8Key(pbBuffer, Len);
-			}
-			break;
-		}
+			case ASN_TAG(ctUniversal, pcPrimitive, utObjectIdentifer):
+				if (CryptDecodeObjectEx(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, X509_OBJECT_IDENTIFIER, 
+					pb, cb, CRYPT_DECODE_ALLOC_FLAG|CRYPT_DECODE_NOCOPY_FLAG, 0, &ppszObjId, &cbStructInfo))
+				{
+					bDecrypt = !strcmp(*ppszObjId, "1.2.840.113549.1.12.10.1.2");
 
-		if (composite)
-		{
-			if (Len)
+					LocalFree(ppszObjId);
+				}
+				break;
+
+			case ASN_TAG(ctUniversal, pcPrimitive, utOctetString):
+				if (Len > 32)
+				{
+					GetPriv8Key(pbBuffer, Len);
+				}
+				break;
+			}
+
+			if (composite)
 			{
 				if (!GetPriv8Key(pbBuffer, Len)) return 0;
 			}
-		}
 
-		cbLength -= Len, pbBuffer += Len;
+		} while (pbBuffer += Len, cbLength -= Len);
 	}
 
 	return pbBuffer;
@@ -266,7 +265,8 @@ HRESULT PFXImport(_In_ PUCHAR pbPFX,
 
 	DATA_BLOB pfx = { cbPFX, pbPFX };
 
-	if (HCERTSTORE hStore = PFXImportCertStore(&pfx, szPassword, PKCS12_ONLY_CERTIFICATES|PKCS12_ALWAYS_CNG_KSP|PKCS12_NO_PERSIST_KEY))
+	if (HCERTSTORE hStore = PFXImportCertStore(&pfx, szPassword,
+		g_nt_ver.Version < _WIN32_WINNT_WIN10 ? PKCS12_NO_PERSIST_KEY : PKCS12_ONLY_CERTIFICATES|PKCS12_NO_PERSIST_KEY))
 	{
 		PCCERT_CONTEXT pCertContext = 0;
 
