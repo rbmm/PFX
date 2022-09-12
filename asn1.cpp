@@ -178,16 +178,10 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 				case 4:
 					b[3] = *pbBuffer++;
 					b[2] = *pbBuffer++;
-					b[1] = *pbBuffer++;
-					b[0] = *pbBuffer++;
-					break;
 				case 2:
 					b[1] = *pbBuffer++;
-					b[0] = *pbBuffer++;
-					break;
 				case 1:
 					b[0] = *pbBuffer++;
-					break;
 				case 0:
 					break;
 				default: return 0;
