@@ -173,19 +173,18 @@ C_ASSERT(sizeof(SC_Container) == FIELD_OFFSET(SC_Container, buf));
 
 PBYTE PackPubKey(BCRYPT_RSAKEY_BLOB* pvrkb, PBYTE pb, PULONG pcbFree, PUSHORT psize)
 {
-	TLV t82 = { 0, (pvrkb + 1), pvrkb->cbPublicExp, 0x82 };
-	TLV t81 = { &t82, (PBYTE)(pvrkb + 1) + pvrkb->cbPublicExp, pvrkb->cbModulus, 0x81 };
-	TLV tlv = { 0, &t81, 0, 0x497f };
+	ULONG cb = *pcbFree, cbPublicExp = pvrkb->cbPublicExp, cbModulus = pvrkb->cbModulus;
+	Asn1Alloc aa(pb, cb);
 
-	if (ULONG s = SizeTLV(&tlv))
+	if (aa.Store(0x82, cbPublicExp, ++pvrkb, cbPublicExp) && 
+		aa.Store(0x81, cbModulus, (PBYTE)pvrkb + cbPublicExp, cbModulus) &&
+		aa.Store(0x497f, cb - aa.FreeSize()))
 	{
-		if (s <= MAXUSHORT && *pcbFree >= s)
-		{
-			PackTLV(&tlv, pb);
-			*pcbFree -= s;
-			*psize = (USHORT)s;
-			return pb + s;
-		}
+		memcpy(pb, aa.GetBuf(), cb -= aa.FreeSize());
+
+		*pcbFree -= cb;
+		*psize = (USHORT)cb;
+		return pb + cb;
 	}
 
 	return 0;
@@ -204,18 +203,10 @@ NTSTATUS PackCert(const BYTE* pbCertEncoded, ULONG cbCertEncoded, PBYTE buf, ULO
 				*(PUSHORT)pb = 'KC';
 				*(1 + (PUSHORT)pb) = (USHORT)cbCertEncoded;
 
-				TLV tlv = { 0, pb, cb + 4, 0x70DF };
-
-				if (ULONG s = SizeTLV(&tlv))
+				if (StoreSingleTag(0x70DF, pb, cb + 4, buf, cbFree, &cb))
 				{
-					if (s <= MAXUSHORT && s <= cbFree)
-					{
-						if (PackTLV(&tlv, buf))
-						{
-							*psize = (USHORT)s;
-							status = STATUS_SUCCESS;
-						}
-					}
+					*psize = (USHORT)cb;
+					status = STATUS_SUCCESS;
 				}
 			}
 

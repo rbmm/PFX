@@ -95,8 +95,12 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 	{
 		union {
 			ULONG Len;
-			UCHAR b[4];
-			SCHAR c;
+			struct {
+				SCHAR l_0;
+				SCHAR l_1;
+				SCHAR l_2;
+				SCHAR l_3;
+			};
 		};
 
 		do 
@@ -106,7 +110,12 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 
 			union {
 				ULONG uTag;
-				UCHAR bTag[4];
+				struct {
+					SCHAR t_0;
+					SCHAR t_1;
+					SCHAR t_2;
+					SCHAR t_3;
+				};
 				struct {
 					UCHAR tag : 5;
 					UCHAR composite : 1;
@@ -123,30 +132,21 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 					return 0;
 				}
 
-				bTag[1] = c = *pbBuffer++;
-
-				if (0 > c)
+				if (0 > (t_1 = *pbBuffer++))
 				{
 					if (!cbLength--)
 					{
 						return 0;
 					}
 
-					bTag[2] = c = *pbBuffer++;
-
-					if (0 > c)
+					if (0 > (t_2 = *pbBuffer++))
 					{
 						if (!cbLength--)
 						{
 							return 0;
 						}
 
-						bTag[3] = c = *pbBuffer++;
-
-						if (0 > c)
-						{
-							return 0;
-						}
+						t_3 = *pbBuffer++;
 					}
 				}
 			}
@@ -164,7 +164,7 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 
 			Len = *pbBuffer++;
 
-			if (0 > c)
+			if (0 > l_0)
 			{
 				if ((Len &= ~0x80) > cbLength)
 				{
@@ -176,12 +176,12 @@ LPCBYTE SC::GetPriv8Key(LPCBYTE pbBuffer, ULONG cbLength)
 				switch (Len)
 				{
 				case 4:
-					b[3] = *pbBuffer++;
-					b[2] = *pbBuffer++;
+					l_3 = *pbBuffer++;
+					l_2 = *pbBuffer++;
 				case 2:
-					b[1] = *pbBuffer++;
+					l_1 = *pbBuffer++;
 				case 1:
-					b[0] = *pbBuffer++;
+					l_0 = *pbBuffer++;
 				case 0:
 					break;
 				default: return 0;
@@ -355,152 +355,266 @@ HRESULT PFXImport(_In_ PCWSTR lpFileName,
 	return status ? status | f : S_OK;
 }
 
-ULONG SizeTLV(TLV* tlv)
+BOOL StoreSingleTag(_In_ ULONG Tag, 
+					_In_ const void* pv, 
+					_In_ ULONG cb, 
+					_Inout_ PBYTE pb, 
+					_In_ ULONG OutputBufferLength, 
+					_Out_ PULONG ReturnBufferLength)
 {
-	ULONG cbData = 0, cbLen, Len;
+	union {
+		ULONG uTagLen;
+		struct {
+			SCHAR s_0;
+			SCHAR s_1;
+			SCHAR s_2;
+			SCHAR s_3;
+		};
+		struct {
+			BYTE tag : 5;
+			BYTE composite : 1;
+			BYTE cls : 2;
+		};
+	};
 
-	do 
+	if (!OutputBufferLength--)
 	{
-		ULONG cbTag = 1;
+		return FALSE;
+	}
 
-		if (tlv->tag == 0x1f)
+	PBYTE _pb = pb;
+
+	uTagLen = Tag;
+
+	*pb++ = s_0;
+
+	if (tag == 0x1F)
+	{
+		if (!OutputBufferLength--)
 		{
-			cbTag = 2;
-			if (tlv->bTag[1] < 0)
+			return FALSE;
+		}
+
+		*pb++ = s_1;
+
+		if (0 > s_1)
+		{
+			if (!OutputBufferLength--)
 			{
-				cbTag = 3;
-				if (tlv->bTag[2] < 0)
+				return FALSE;
+			}
+
+			*pb++ = s_2;
+
+			if (0 > s_2)
+			{
+				if (!OutputBufferLength--)
 				{
-					cbTag = 4;
-					if (tlv->bTag[3] < 0)
-					{
-						return 0;
-					}
+					return FALSE;
 				}
+
+				*pb++ = s_3;
 			}
 		}
+	}
 
-		if (tlv->composite)
-		{
-			if (!tlv->child || tlv->Len || !(Len = SizeTLV(tlv->child)))
-			{
-				return 0;
-			}
-			tlv->Len = Len;
-		}
-		else
-		{
-			Len = tlv->Len;
-		}
+	ULONG s;
 
-		if (Len < 0x80)
-		{
-			cbLen = 1;
-		}
-		else if (Len < 0x100)
-		{
-			cbLen = 2;
-		}
-		else if (Len < 0x10000)
-		{
-			cbLen = 3;
-		}
-		else
-		{
-			cbLen = 5;
-		}
+	if (cb < 0x80)
+	{
+		s = 1;
+	}
+	else if (cb < 0x100)
+	{
+		s = 2;
+	}
+	else if (cb < 0x10000)
+	{
+		s = 3;
+	}
+	else
+	{
+		s = 5;
+	}
 
-		cbData += cbTag + cbLen + Len;
+	if (OutputBufferLength < s)
+	{
+		return FALSE;
+	}
 
-	} while (tlv = tlv->next);
+	OutputBufferLength -= s;
 
-	return cbData;
+	uTagLen = cb;
+
+	if (cb < 0x80)
+	{
+		goto __0;
+	}
+
+	if (cb < 0x100)
+	{
+		*pb++ = 0x81;
+		goto __0;
+	}
+
+	if (cb < 0x10000)
+	{
+		*pb++ = 0x82;
+		goto __1;
+	}
+
+	*pb++ = 0x84;
+	*pb++ = s_3;
+	*pb++ = s_2;
+__1:
+	*pb++ = s_1;
+__0:
+	*pb++ = s_0;
+
+	if (OutputBufferLength < cb)
+	{
+		return FALSE;
+	}
+
+	memcpy(pb, pv, cb);
+
+	*ReturnBufferLength = RtlPointerToOffset(_pb, pb + cb);
+
+	return TRUE;
 }
 
-PBYTE PackTLV(TLV* tlv, PBYTE pb)
+BOOL Asn1Alloc::Store(_In_ ULONG Tag, _In_ ULONG Len, _In_opt_ const void* pvData, _In_opt_ ULONG cbData)
 {
-	do 
+	ULONG cb = _cb;
+	PBYTE pb = _pb;
+
+	if (cbData)
 	{
-		union {
-			ULONG uTag;
-			char bTag[4];
-			struct {
-				BYTE tag : 5;
-				BYTE composite : 1;
-				BYTE cls : 2;
-			};
-		};
-
-		uTag = tlv->uTag;
-
-		*pb++ = bTag[0];
-
-		if (tag == 0x1f)
+		if (cb < cbData)
 		{
-			char c;
+			return FALSE;
+		}
 
-			*pb++ = c = bTag[1];
+		cb -= cbData;
+		memcpy(pb -= cbData, pvData, cbData);
+	}
 
-			if (0 > c)
+	union {
+		ULONG uTagLen;
+		struct {
+			SCHAR s_0;
+			SCHAR s_1;
+			SCHAR s_2;
+			SCHAR s_3;
+		};
+		struct {
+			BYTE tag : 5;
+			BYTE composite : 1;
+			BYTE cls : 2;
+		};
+	};
+
+	uTagLen = Len;
+
+	ULONG s;
+
+	if (Len < 0x80)
+	{
+		s = 1;
+	}
+	else if (Len < 0x100)
+	{
+		s = 2;
+	}
+	else if (Len < 0x10000)
+	{
+		s = 3;
+	}
+	else
+	{
+		s = 5;
+	}
+
+	if (cb < s)
+	{
+		return FALSE;
+	}
+
+	cb -= s, pb -= s;
+
+	PBYTE lpb = pb;
+
+	if (Len < 0x80)
+	{
+		goto __0;
+	}
+
+	if (Len < 0x100)
+	{
+		*lpb++ = 0x81;
+		goto __0;
+	}
+
+	if (Len < 0x10000)
+	{
+		*lpb++ = 0x82;
+		goto __1;
+	}
+
+	*lpb++ = 0x84;
+	*lpb++ = s_3;
+	*lpb++ = s_2;
+__1:
+	*lpb++ = s_1;
+__0:
+	*lpb++ = s_0;
+
+	uTagLen = Tag;
+
+	s = 1;
+
+	if (tag == 0x1F)
+	{
+		s = 2;
+
+		if (s_1 < 0)
+		{
+			s = 3;
+
+			if (s_2 < 0)
 			{
-				*pb++ = c = bTag[2];
-
-				if (0 > c)
-				{
-					*pb++ = c = bTag[3];
-
-					if (0 > c)
-					{
-						return 0;
-					}
-				}
+				s = 4;
 			}
 		}
+	}
 
-		union {
-			ULONG Len;
-			char b[4];
-		};
+	if (cb < s)
+	{
+		return FALSE;
+	}
 
-		Len = tlv->Len;
+	cb -= s, lpb = (pb -= s);
 
-		if (Len < 0x80)
-		{
-			*pb++ = b[0];
-		}
-		else if (Len < 0x100)
-		{
-			*pb++ = 0x81;
-			*pb++ = b[0];
-		}
-		else if (Len < 0x10000)
-		{
-			*pb++ = 0x82;
-			*pb++ = b[1];
-			*pb++ = b[0];
-		}
-		else
-		{
-			*pb++ = 0x84;
-			*pb++ = b[3];
-			*pb++ = b[2];
-			*pb++ = b[1];
-			*pb++ = b[0];
-		}
+	*lpb++ = s_0;
 
-		if (tlv->composite)
-		{
-			pb = PackTLV(tlv->child, pb);
-		}
-		else if (Len)
-		{
-			memcpy(pb, tlv->pvData, Len);
-			pb += Len;
-		}
+	if (tag == 0x1F)
+	{
+		*lpb++ = s_1;
 
-	} while (tlv = tlv->next);
+		if (0 > s_1)
+		{
+			*lpb++ = s_2;
 
-	return pb;
+			if (0 > s_2)
+			{
+				*lpb++ = s_3;
+			}
+		}
+	}
+
+	_pb = pb, _cb = cb;
+
+	return TRUE;
 }
 
 _NT_END

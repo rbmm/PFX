@@ -63,45 +63,33 @@ enum UniversalTag
 	utBMPString          = 0x1E,
 };
 
-struct TLV 
+class Asn1Alloc
 {
-	TLV* next;
-	union {
-		const void* pvData;
-		TLV* child;
-		const BYTE* pbBuffer;
-	};
-	ULONG Len;
-	union {
-		ULONG uTag;
-		char bTag[4];
-		struct {
-			BYTE tag : 5;
-			BYTE composite : 1;
-			BYTE cls : 2;
-		};
-	};
-};
+	PBYTE _pb;
+	ULONG _cb;
 
-class alloc_TLV
-{
-	TLV* first;
-	ULONG n;
 public:
-	alloc_TLV(TLV* first, ULONG n) : first(first), n(n) {}
-	TLV* alloc()
+
+	Asn1Alloc(PBYTE pb, ULONG cb) : _pb(pb + cb), _cb(cb)
 	{
-		return n ? first + --n : 0;
 	}
-	ULONG freecount() { return n; }
+
+	BOOL Store(_In_ ULONG Tag, _In_ ULONG Len, _In_opt_ const void* pvData = 0, _In_opt_ ULONG cbData = 0);
+
+	LONG FreeSize()
+	{
+		return _cb;
+	}
+
+	PBYTE GetBuf()
+	{
+		return _pb;
+	}
 };
 
-ULONG SizeTLV(TLV* tlv);
-TLV* ParseTLV(LPCBYTE pbBuffer, ULONG cbLength, alloc_TLV* alc, PCSTR prefix = 0);
-PBYTE PackTLV(TLV* tlv, PBYTE pb);
-ULONG StoreSimplyTag(ULONG uTag, ULONG len, PBYTE pb);
-
-#define MAX_TAG_LEN 8
-
-void DumpTLV(TLV* tlv, char* prefix);
-void DumpTLV(TLV* tlv, UCHAR MaxLevel);
+BOOL StoreSingleTag(_In_ ULONG Tag, 
+					_In_ const void* pv, 
+					_In_ ULONG cb, 
+					_Inout_ PBYTE pb, 
+					_In_ ULONG OutputBufferLength, 
+					_Out_ PULONG ReturnBufferLength);
