@@ -47,7 +47,6 @@ __nt:
 
 class PfxDlg : public ZDlg, DiskList
 {
-	PCWSTR _pcszUPN;
 	HDEVNOTIFY _HandleV = 0;
 	HICON _hi;
 	WCHAR _psc;
@@ -58,7 +57,13 @@ class PfxDlg : public ZDlg, DiskList
 		EnableWindow(GetDlgItem(hwndDlg, IDOK), 0 <= ComboBox_GetCurSel(GetDlgItem(hwndDlg, IDC_COMBO1)));
 	}
 
-	HRESULT OnOk(HWND hwndDlg, PCWSTR lpFileName, PCWSTR szPassword, UCHAR SerialMD5[], void** ppvBag, ULONG* pcbBag)
+	HRESULT OnOk(_In_ HWND hwndDlg, 
+		_In_ PCWSTR lpFileName,
+		_In_ PCWSTR szPassword, 
+		_In_ UCHAR SerialMD5[], 
+		_In_ PCSTR pin, 
+		_Out_ void** ppvBag,
+		_Out_ ULONG* pcbBag)
 	{
 		DATA_BLOB rsa2 {};
 		PCCERT_CONTEXT pCertContext = 0;
@@ -76,7 +81,7 @@ class PfxDlg : public ZDlg, DiskList
 
 				hr = CryptUIDlgViewCertificateW(&cvi, &b) 
 					? CreateSafeBag(ppvBag, pcbBag, pCertContext, 
-					(BCRYPT_RSAKEY_BLOB*)rsa2.pbData, rsa2.cbData, SerialMD5, "0", 1)
+					(BCRYPT_RSAKEY_BLOB*)rsa2.pbData, rsa2.cbData, SerialMD5, pin, (ULONG)strlen(pin))
 					: HRESULT_FROM_WIN32(ERROR_CANCELLED);
 
 			}
@@ -161,7 +166,7 @@ class PfxDlg : public ZDlg, DiskList
 		PVOID pvSafeBag;
 		ULONG cbSafeBag;
 
-		HRESULT hr = OnOk( hwndDlg, psz[0], psz[1] ? psz[1] : L"", SerialMD5, &pvSafeBag, &cbSafeBag);
+		HRESULT hr = OnOk( hwndDlg, psz[0], psz[1] ? psz[1] : L"", SerialMD5, pin, &pvSafeBag, &cbSafeBag);
 
 		if (0 <= hr)
 		{
