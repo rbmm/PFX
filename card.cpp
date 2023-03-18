@@ -1,7 +1,5 @@
 #include "stdafx.h"
-
-#define ZLIB_INTERNAL
-#include "../zlib/zlib.h"
+#include <compressapi.h>
 
 _NT_BEGIN
 
@@ -9,6 +7,23 @@ _NT_BEGIN
 #include "card.h"
 
 #define MD5_HASH_SIZE 16
+
+ULONG adler32( const unsigned char* buf, size_t buf_length )
+{
+	ULONG s1 = 1;
+	ULONG s2 = 0;
+
+	if (buf_length)
+	{
+		do 
+		{
+			s1 = ( s1 + *buf++ ) % 65521;
+			s2 = ( s2 + s1 ) % 65521;
+		} while (--buf_length);
+	}
+
+	return _byteswap_ulong(( s2 << 16 ) + s1);
+}
 
 NTSTATUS CreateHash(_Out_ BCRYPT_HASH_HANDLE *phHash, _In_ PCWSTR pszAlgId)
 {
@@ -194,24 +209,47 @@ NTSTATUS PackCert(const BYTE* pbCertEncoded, ULONG cbCertEncoded, PBYTE buf, ULO
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-	if (ULONG cb = compressBound(cbCertEncoded))
+	COMPRESSOR_HANDLE CompressorHandle;
+	if (CreateCompressor(COMPRESS_ALGORITHM_MSZIP|COMPRESS_RAW, 0, &CompressorHandle))
 	{
-		if (PBYTE pb = new BYTE[4 + cb])
+		union {
+			ULONG cb;
+			SIZE_T CompressedDataSize;
+		};
+
+		switch (ULONG dwError = BOOL_TO_ERROR(Compress(CompressorHandle, 0, cbCertEncoded, 0, 0, &CompressedDataSize)))
 		{
-			if (compress(pb + 4, &cb, pbCertEncoded, cbCertEncoded) == Z_OK)
+		case NOERROR:
+		case ERROR_INSUFFICIENT_BUFFER:
+			if (PBYTE pb = new BYTE[2 * sizeof(USHORT) + CompressedDataSize + sizeof(ULONG)])
 			{
-				*(PUSHORT)pb = 'KC';
-				*(1 + (PUSHORT)pb) = (USHORT)cbCertEncoded;
-
-				if (StoreSingleTag(0x70DF, pb, cb + 4, buf, cbFree, &cb))
+				if (Compress(CompressorHandle, pbCertEncoded, cbCertEncoded, 
+					pb + 2*sizeof(USHORT), CompressedDataSize, &CompressedDataSize))
 				{
-					*psize = (USHORT)cb;
-					status = STATUS_SUCCESS;
-				}
-			}
+					if (CompressedDataSize < cbFree && ((PUSHORT)pb)[2] == 'KC')
+					{
+						((PUSHORT)pb)[0] = 'KC';
+						((PUSHORT)pb)[1] = (USHORT)cbCertEncoded;
+						((PUSHORT)pb)[2] = 0x9C78;// ?!
 
-			delete[] pb;
+						ULONG adler = adler32(pbCertEncoded, cbCertEncoded);
+						PVOID pv = 2 * sizeof(USHORT) + pb + CompressedDataSize;
+						RtlStoreUlong(pv, adler);
+
+						if (StoreSingleTag(0x70DF, pb, 2 * sizeof(USHORT) + (ULONG)CompressedDataSize + sizeof(ULONG), buf, cbFree, &cb))
+						{
+							*psize = (USHORT)cb;
+							status = STATUS_SUCCESS;
+						}
+					}
+				}
+
+				delete [] pb;
+			}
+			break;
 		}
+
+		CloseCompressor(CompressorHandle);
 	}
 
 	return status;
